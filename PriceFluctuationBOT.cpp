@@ -74,8 +74,8 @@ string getEnv(const string& key) {
 
 void initializeKeys() {
     loadEnv(".env");
-    api_key = getEnv("BINANCE_API_KEY");
-    api_secret = getEnv("BINANCE_API_SECRET");
+    api_key = getEnv("binance_api_key");
+    api_secret = getEnv("binance_api_secret");
 
     if (api_key.empty() || api_secret.empty()) {
         cerr << "API keys are missing in the .env file." << endl;
@@ -83,57 +83,12 @@ void initializeKeys() {
     }
 }
 
-vector<string> getCoinsFromAPI() {
-    string url = "https://api.binance.com/api/v3/exchangeInfo";
-    Json::Value data = getRequestData(url);
-    vector<string> coins;
-
-    for (const auto& symbol : data["symbols"]) {
-        if (symbol["status"].asString() == "TRADING" &&
-            symbol["symbol"].asString().substr(symbol["symbol"].asString().length() - 4) == "USDT") {
-            coins.push_back(symbol["symbol"].asString());
-        }
-    }
-    return coins;
-}
-
 Json::Value getHistoricalKlines(const string& symbol, const string& interval, const string& startTime, int limit) {
-    string url = "https://fapi.binance.com/fapi/v1/klines?symbol=" + symbol + "&interval=" + interval + "&startTime=" + startTime + "&limit=" + to_string(limit);
+    string url = "https://fapi.binance.com/fapi/v1/klines?symbol=" + symbol + 
+                 "&interval=" + interval + 
+                 "&startTime=" + startTime + 
+                 "&limit=" + to_string(limit);
     return getRequestData(url);
-}
-
-bool checkPriceDrop(const Json::Value& result, int mid) {
-    double priceNow = stod(result[result.size() - 1][4].asString());
-
-    for (const auto& day : result) {
-        double high = stod(day[2].asString());
-        time_t startTime = stoll(day[6].asString()) / 1000;
-        time_t endTime = stoll(result[result.size() - 1][6].asString()) / 1000;
-        int durationDays = difftime(endTime, startTime) / (60 * 60 * 24);
-
-        if (durationDays > mid) continue;
-        if (high > priceNow && (high - priceNow) / priceNow > 0.05) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool checkPriceIncrease(const Json::Value& result, int mid) {
-    double priceNow = stod(result[result.size() - 1][4].asString());
-
-    for (const auto& day : result) {
-        double low = stod(day[3].asString());
-        time_t startTime = stoll(day[6].asString()) / 1000;
-        time_t endTime = stoll(result[result.size() - 1][6].asString()) / 1000;
-        int durationDays = difftime(endTime, startTime) / (60 * 60 * 24);
-
-        if (durationDays > mid) continue;
-        if (low < priceNow && (priceNow - low) / low > 0.02) {
-            return false;
-        }
-    }
-    return true;
 }
 
 vector<string> getHardcodedCoins() {
@@ -158,49 +113,48 @@ vector<string> getHardcodedCoins() {
 int main() {
     initializeKeys();
     vector<string> coins = getHardcodedCoins();
-    vector<string> excludedCoins = {"BTCSTUSDT", "TLMUSDT", "SCUSDT", "FTTUSDT", "RENUSDT", "HNTUSDT", "BTSUSDT", "RAYUSDT", "SRMUSDT", "CVCUSDT"};
-    for (const auto& excluded : excludedCoins) {
-        coins.erase(remove(coins.begin(), coins.end(), excluded), coins.end());
-    }
+
+    cout << "Total Coins: " << coins.size() << endl;
 
     while (true) {
+        double mx = 0;
+        string coinMax;
+        string utcNow = to_string(chrono::duration_cast<chrono::milliseconds>(
+                                       chrono::system_clock::now().time_since_epoch() - chrono::seconds(310))
+                                       .count());
+
         for (const auto& coin : coins) {
-            if (coin.substr(coin.size() - 4) != "USDT") continue;
+            try {
+                Json::Value result = getHistoricalKlines(coin, "5m", utcNow, 1);
 
-            string utcNow = to_string(chrono::duration_cast<chrono::milliseconds>(
-                                           chrono::system_clock::now().time_since_epoch() - chrono::hours(24 * 365))
-                                           .count());
+                if (result.empty()) continue;
 
-            Json::Value result = getHistoricalKlines(coin, "1d", utcNow, 360);
+                double high = stod(result[0][2].asString());
+                double low = stod(result[0][3].asString());
+                double open = stod(result[0][1].asString());
+                double close = stod(result[0][4].asString());
 
-            if (result.empty()) continue;
+                double val = ((high - low) / open) * 100;
 
-            int idPre = 0;
-            double priceNow = stod(result[result.size() - 1][4].asString());
-
-            for (int i = 0; i < result.size(); i++) {
-                double high = stod(result[i][2].asString());
-                if (high > priceNow && (high - priceNow) / priceNow > 0.02) {
-                    idPre = i;
+                if (mx < val && close > open) {
+                    mx = val;
+                    coinMax = coin;
+                    cout << "Max Coin: " << coinMax << " | Value: " << mx << "%" << endl;
                 }
-            }
-            if (result.size() - idPre > 30) {
-                cout << coin << " " << result.size() - idPre << " top" << endl;
-            }
 
-            idPre = 0;
-            for (int i = 0; i < result.size(); i++) {
-                double low = stod(result[i][3].asString());
-                if (low < priceNow && (priceNow - low) / low > 0.02) {
-                    idPre = i;
+                if (val > 1.5 && coinMax != coin) {
+                    cout << "Significant Coin: " << coin << " | Value: " << val << "%" << endl;
                 }
-            }
-            if (result.size() - idPre > 30) {
-                cout << coin << " " << result.size() - idPre << " bottom" << endl;
+
+                this_thread::sleep_for(chrono::seconds(1));
+            } catch (const exception& e) {
+                cerr << "Error processing coin: " << coin << " | " << e.what() << endl;
+                this_thread::sleep_for(chrono::seconds(30));
+                continue;
             }
         }
 
-        this_thread::sleep_for(chrono::minutes(5));
+        this_thread::sleep_for(chrono::seconds(1));
     }
 
     return 0;

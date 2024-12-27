@@ -74,8 +74,8 @@ string getEnv(const string& key) {
 
 void initializeKeys() {
     loadEnv(".env");
-    api_key = getEnv("BINANCE_API_KEY");
-    api_secret = getEnv("BINANCE_API_SECRET");
+    api_key = getEnv("binance_api_key");
+    api_secret = getEnv("binance_api_secret");
 
     if (api_key.empty() || api_secret.empty()) {
         cerr << "API keys are missing in the .env file." << endl;
@@ -101,6 +101,13 @@ vector<string> getHardcodedCoins() {
         "TUSDT", "HIGHUSDT", "MINAUSDT", "ASTRUSDT", "PHBUSDT", "GMXUSDT", "CFXUSDT", "STXUSDT", "BNXUSDT", "ACHUSDT", "SSVUSDT"
     };
 }
+Json::Value getHistoricalKlines(const string& symbol, const string& interval, const string& startTime, int limit) {
+    string url = "https://fapi.binance.com/fapi/v1/klines?symbol=" + symbol + 
+                 "&interval=" + interval + 
+                 "&startTime=" + startTime + 
+                 "&limit=" + to_string(limit);
+    return getRequestData(url);
+}
 
 int main() {
     initializeKeys();
@@ -118,14 +125,13 @@ int main() {
 
             Json::Value result = getHistoricalKlines(coin, "1d", utcNow, 360);
 
-            if (result.empty()) continue;
-
+            if (result.empty()) continue; 
             int idPre = 0;
             double priceNow = stod(result[result.size() - 1][4].asString());
-
             for (int i = 0; i < result.size(); i++) {
                 double high = stod(result[i][2].asString());
-                if (high > priceNow && (high - priceNow) / priceNow > 0.02) {
+                cout << high << " " << priceNow <<" check" << " " << (high - priceNow) / priceNow<< endl; 
+                if (high > priceNow && (high - priceNow) / priceNow > 0.02) { // suddenly increase 2% 
                     idPre = i;
                 }
             }
