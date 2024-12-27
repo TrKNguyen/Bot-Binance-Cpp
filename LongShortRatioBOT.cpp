@@ -246,7 +246,7 @@ int main() {
     }
 
     handleTelegramBotPrint("Long Rate By Position - Long Rate By Account:");
-    for (int i = 0; i < 5; i++) {
+    for (int i = list_longshortrate.size() - 5; i < list_longshortrate.size(); i++) {
         handleTelegramBotPrint(list_longshortrate[i].second + " " + to_string(list_longshortrate[i].first));
     }
 
