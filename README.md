@@ -23,4 +23,5 @@ Before running the bot, ensure you have the following installed:
    git clone https://github.com/TrKNguyen/Bot-Binance-Cpp.git
    cd Bot-Binance-Cpp
 2. **Run the Bot**
+    ```bash
    ./run.sh LongShortRatioBOT.cpp
