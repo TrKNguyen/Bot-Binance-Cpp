@@ -1,4 +1,6 @@
 #include <iostream>
+#include <string>
+#include <vector>
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -7,6 +9,7 @@
 #include <cmath>
 #include <unordered_map>
 #include <fstream>
+#include <ctime>
 
 using namespace std;
 
@@ -80,66 +83,68 @@ void initializeKeys() {
     }
 }
 
-vector<string> getCoinsFromAPI() {
-    string url = "https://api.binance.com/api/v3/exchangeInfo";
-    Json::Value data = getRequestData(url);
-    vector<string> coins;
-
-    for (const auto& symbol : data["symbols"]) {
-        if (symbol["status"].asString() == "TRADING" &&
-            symbol["symbol"].asString().substr(symbol["symbol"].asString().length() - 4) == "USDT") {
-            coins.push_back(symbol["symbol"].asString());
-        }
-    }
-    return coins;
+vector<string> getHardcodedCoins() {
+    return {
+        "BTCUSDT", "ETHUSDT", "BCHUSDT", "XRPUSDT", "EOSUSDT", "LTCUSDT", "TRXUSDT", "ETCUSDT", "LINKUSDT", "XLMUSDT", 
+        "ADAUSDT", "XMRUSDT", "DASHUSDT", "ZECUSDT", "XTZUSDT", "BNBUSDT", "ATOMUSDT", "ONTUSDT", "IOTAUSDT", "BATUSDT", 
+        "VETUSDT", "NEOUSDT", "QTUMUSDT", "IOSTUSDT", "THETAUSDT", "ALGOUSDT", "ZILUSDT", "KNCUSDT", "ZRXUSDT", "COMPUSDT", 
+        "OMGUSDT", "DOGEUSDT", "SXPUSDT", "KAVAUSDT", "BANDUSDT", "RLCUSDT", "MKRUSDT", "SNXUSDT", "DOTUSDT", "DEFIUSDT", 
+        "YFIUSDT", "BALUSDT", "CRVUSDT", "TRBUSDT", "RUNEUSDT", "SUSHIUSDT", "EGLDUSDT", "SOLUSDT", "ICXUSDT", "STORJUSDT", 
+        "UNIUSDT", "AVAXUSDT", "FTMUSDT", "ENJUSDT", "FLMUSDT", "KSMUSDT", "NEARUSDT", "AAVEUSDT", "FILUSDT", "RSRUSDT", 
+        "LRCUSDT", "BELUSDT", "AXSUSDT", "ALPHAUSDT", "ZENUSDT", "SKLUSDT", "GRTUSDT", "1INCHUSDT", "CHZUSDT", "SANDUSDT", 
+        "ANKRUSDT", "LITUSDT", "REEFUSDT", "RVNUSDT", "SFPUSDT", "COTIUSDT", "CHRUSDT", "MANAUSDT", "ALICEUSDT", "HBARUSDT", 
+        "ONEUSDT", "LINAUSDT", "STMXUSDT", "DENTUSDT", "CELRUSDT", "HOTUSDT", "MTLUSDT", "OGNUSDT", "NKNUSDT", "1000SHIBUSDT", 
+        "BAKEUSDT", "GTCUSDT", "BTCDOMUSDT", "IOTXUSDT", "C98USDT", "MASKUSDT", "ATAUSDT", "DYDXUSDT", "1000XECUSDT", "GALAUSDT", 
+        "CELOUSDT", "ARUSDT", "ARPAUSDT", "CTSIUSDT", "LPTUSDT", "ENSUSDT", "PEOPLEUSDT", "ROSEUSDT", "DUSKUSDT", "FLOWUSDT", 
+        "IMXUSDT", "API3USDT", "GMTUSDT", "APEUSDT", "WOOUSDT", "JASMYUSDT", "OPUSDT", "INJUSDT", "STGUSDT", "SPELLUSDT", 
+        "1000LUNCUSDT", "LUNA2USDT", "LDOUSDT", "ICPUSDT", "APTUSDT", "QNTUSDT", "FETUSDT", "FXSUSDT", "HOOKUSDT", "MAGICUSDT", 
+        "TUSDT", "HIGHUSDT", "MINAUSDT", "ASTRUSDT", "PHBUSDT", "GMXUSDT", "CFXUSDT", "STXUSDT", "BNXUSDT", "ACHUSDT", "SSVUSDT"
+    };
 }
 
 int main() {
     initializeKeys();
-    vector<string> coins = getCoinsFromAPI();
-    random_shuffle(coins.begin(), coins.end());
-    cout << "Total Coins: " << coins.size() << endl;
+    vector<string> coins = getHardcodedCoins();
+
+    cout << "Total Hardcoded Coins: " << coins.size() << endl;
 
     while (true) {
-        string utc_now = to_string(chrono::duration_cast<chrono::seconds>(
-                                       chrono::system_clock::now().time_since_epoch())
-                                       .count() - 310) + "000";
-
-        string coin_max;
-        double val_max = -1;
-
         for (const auto& coin : coins) {
-            try {
-                string url_spot = "https://api.binance.com/api/v3/klines?symbol=" + coin +
-                                  "&interval=5m&startTime=" + utc_now + "&limit=1";
+            if (coin.substr(coin.size() - 4) != "USDT") continue;
 
-                string url_futures = "https://fapi.binance.com/fapi/v1/klines?symbol=" + coin +
-                                     "&interval=5m&startTime=" + utc_now + "&limit=1";
+            string utcNow = to_string(chrono::duration_cast<chrono::milliseconds>(
+                                           chrono::system_clock::now().time_since_epoch() - chrono::hours(24 * 365))
+                                           .count());
 
-                Json::Value result_spot = getRequestData(url_spot);
-                Json::Value result_futures = getRequestData(url_futures);
+            Json::Value result = getHistoricalKlines(coin, "1d", utcNow, 360);
 
-                if (result_spot.empty() || result_futures.empty()) continue;
+            if (result.empty()) continue;
 
-                double close_spot = stod(result_spot[0][4].asString());
-                double close_futures = stod(result_futures[0][4].asString());
-                double diff = ((close_spot - close_futures) / close_spot) * 100.0;
+            int idPre = 0;
+            double priceNow = stod(result[result.size() - 1][4].asString());
 
-                if (diff > val_max) {
-                    val_max = diff;
-                    coin_max = coin;
+            for (int i = 0; i < result.size(); i++) {
+                double high = stod(result[i][2].asString());
+                if (high > priceNow && (high - priceNow) / priceNow > 0.02) {
+                    idPre = i;
                 }
+            }
+            if (result.size() - idPre > 30) {
+                cout << coin << " " << result.size() - idPre << " top" << endl;
+            }
 
-                if (diff > 1) {
-                    cout << coin << " has a significant difference: " << diff << "%" << endl;
+            idPre = 0;
+            for (int i = 0; i < result.size(); i++) {
+                double low = stod(result[i][3].asString());
+                if (low < priceNow && (priceNow - low) / low > 0.02) {
+                    idPre = i;
                 }
-            } catch (const exception& e) {
-                cerr << "Error processing coin: " << coin << ", " << e.what() << endl;
-                continue;
+            }
+            if (result.size() - idPre > 30) {
+                cout << coin << " " << result.size() - idPre << " bottom" << endl;
             }
         }
 
-        cout << "Coin with max difference: " << coin_max << " | Difference: " << val_max << "%" << endl;
         this_thread::sleep_for(chrono::minutes(5));
     }
 
